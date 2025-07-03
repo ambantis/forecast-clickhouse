@@ -1,0 +1,9 @@
+<clickhouse>
+    <users>
+        <forecast>
+            <password>password</password>
+            <profile>default</profile>
+            <quota>default</quota>
+        </forecast>
+    </users>
+</clickhouse>

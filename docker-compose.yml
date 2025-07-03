@@ -1,0 +1,101 @@
+services:
+  localstack:
+    image: localstack/localstack:stable
+    environment:
+      - SERVICES=s3
+      #- DEBUG=1
+    ports:
+      - "14566:4566"
+      # - "${PORT_WEB_UI-18080}:${PORT_WEB_UI-18080}"
+    volumes:
+      - ./containers/localstack/scripts:/etc/localstack/init/ready.d/
+      - ./containers/localstack/data:/data
+
+  # ClickHouse: single node cluster
+  # cf. https://github.com/filimonov/clickhouse-compose-examples/tree/master/3_nodes_1x3
+  zookeeper:
+    image: docker.io/zookeeper:3.8.1
+    expose:
+      - "2181"
+    environment:
+      ZOO_TICK_TIME: 500
+      ZOO_MY_ID: 1
+    healthcheck:
+      test: echo stat | nc localhost 2181
+      interval: 3s
+      timeout: 2s
+      retries: 5
+      start_period: 2s
+    security_opt:
+        - label:disable
+    mem_limit: 1000M
+    cpus: 1
+
+  clickhouse1:
+    image: clickhouse/clickhouse-server:24.2.2
+    ports:
+      - "9000:9000"
+      - "9009:9009"
+      - "8123:8123"
+    environment:
+      CLUSTER: testcluster           # see also remote_servers.xml
+      SHARD: 01
+      REPLICA: 01
+      MAX_SERVER_MEMORY_USAGE: 7800000000 # see also max_server_memory_usage.xml
+      MAX_MEMORY_USAGE: 6000000000
+      MAX_BYTES_BEFORE_EXTERNAL_SORT: 0
+      MAX_BYTES_BEFORE_EXTERNAL_GROUP_BY: 0
+      MAX_THREADS: 0                 # half of avaliable cores
+    volumes:
+      - ./containers/clickhouse/config.d/macros.xml:/etc/clickhouse-server/config.d/macros.xml
+      - ./containers/clickhouse/config.d/max_server_memory_usage.xml:/etc/clickhouse-server/config.d/max_server_memory_usage.xml
+      - ./containers/clickhouse/config.d/remote_servers.xml:/etc/clickhouse-server/config.d/remote_servers.xml
+      - ./containers/clickhouse/config.d/system_log_tables.xml:/etc/clickhouse-server/config.d/system_log_tables.xml
+      - ./containers/clickhouse/config.d/zookeeper.xml:/etc/clickhouse-server/config.d/zookeeper.xml
+      - ./containers/clickhouse/users.d/default_profile.xml:/etc/clickhouse-server/users.d/default_profile.xml
+      - ./containers/clickhouse/users.d/forecast_user.xml:/etc/clickhouse-server/users.d/forecast_user.xml
+      - ./containers/clickhouse/data/:/var/lib/clickhouse/
+      - ./containers/clickhouse/logs/:/var/log/clickhouse-server/
+    mem_limit: 8000M
+    cpus: 2.0
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    cap_add:
+      - SYS_PTRACE
+      - NET_ADMIN
+      - IPC_LOCK
+      - SYS_NICE
+    security_opt:
+      - label:disable
+    healthcheck:
+      test: clickhouse client --user forecast --password password --query='SELECT 1'
+      interval: 3s
+      timeout: 2s
+      retries: 5
+      start_period: 2s
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+
+  flyway:
+    build:
+      context: target/docker/stage
+    environment:
+      - JAVA_OPTS=-Xms512M -Xmx512M -Dconfig.resource=application.development.conf
+      - CONFIG_FORCE_forecast_ch_apply__schema=true
+      - CONFIG_FORCE_forecast_ch_host=clickhouse1
+    depends_on:
+      clickhouse1:
+        condition: service_healthy
+    healthcheck:
+      test: "exit 0"
+      interval: 500ms
+
+networks:
+  clickhouse-network:
+    name: clickhouse-network
+    ipam:
+      config:
+        - subnet: 172.23.0.0/24
