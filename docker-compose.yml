@@ -10,6 +10,12 @@ services:
     volumes:
       - ./containers/localstack/scripts:/etc/localstack/init/ready.d/
       - ./containers/localstack/data:/data
+    healthcheck:
+      test: /etc/localstack/init/ready.d/health-check.sh
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
 
   # ClickHouse: single node cluster
   # cf. https://github.com/filimonov/clickhouse-compose-examples/tree/master/3_nodes_1x3
@@ -92,6 +98,19 @@ services:
     healthcheck:
       test: "exit 0"
       interval: 500ms
+
+  # Orchestration service - waits for all services to be healthy
+  all_services_healthy:
+    image: quay.io/podman/hello
+    depends_on:
+      localstack:
+        condition: service_healthy
+      zookeeper:
+        condition: service_healthy
+      clickhouse1:
+        condition: service_healthy
+      flyway:
+        condition: service_healthy
 
 networks:
   clickhouse-network:

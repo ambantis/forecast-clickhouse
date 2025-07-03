@@ -86,7 +86,7 @@ generate_date_sequence() {
 if [[ -d "$DATA_DIR" ]]; then
     echo "📁 Found existing $DATA_DIR directory"
     echo "🗑️  Removing existing directory..."
-    rm -rf "$DATA_DIR"
+    find "$DATA_DIR" mindepth 1 -not -name '.gitkeep' -delete
 fi
 
 # Step 2: Create fresh data directory and download forecast data
