@@ -1,2 +1,0 @@
-# This file ensures the migration directory is tracked in Git
-# Migration files will be added here for ClickHouse database schema changes
